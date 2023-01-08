@@ -21,6 +21,8 @@
 
 #include <esp_http_server.h>
 
+#define HTTPD_WS_MAX_OPEN_SOCKETS  7  // copied from HTTPD_DEFAULT_CONFIG
+
 /* A simple example that demonstrates using websocket echo server
  */
 static const char *TAG = "ws_echo_server";
@@ -42,33 +44,6 @@ struct async_resp_arg {
 };
 
 /*
- * async send function, which we put into the httpd work queue
- */
-static void ws_async_send(void *arg)
-{
-    static const char * data = "Async data";
-    struct async_resp_arg *resp_arg = arg;
-    httpd_handle_t hd = resp_arg->hd;
-    int fd = resp_arg->fd;
-    httpd_ws_frame_t ws_pkt;
-    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-    ws_pkt.payload = (uint8_t*)data;
-    ws_pkt.len = strlen(data);
-    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-
-    httpd_ws_send_frame_async(hd, fd, &ws_pkt);
-    free(resp_arg);
-}
-
-static esp_err_t trigger_async_send(httpd_handle_t handle, httpd_req_t *req)
-{
-    struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
-    resp_arg->hd = req->handle;
-    resp_arg->fd = httpd_req_to_sockfd(req);
-    return httpd_queue_work(handle, ws_async_send, resp_arg);
-}
-
-/*
  * This handler echos back the received ws data
  * and triggers an async send if certain message received
  */
@@ -81,48 +56,7 @@ static esp_err_t echo_handler(httpd_req_t *req)
         httpd_resp_send(req, root_start, root_len);
         return ESP_OK;
     }
-    ESP_LOGI(TAG, "req->method %d", req->method);
-    httpd_ws_frame_t ws_pkt;
-    uint8_t *buf = NULL;
-    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-    /* Set max_len = 0 to get the frame len */
-    esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "httpd_ws_recv_frame failed to get frame len with %d", ret);
-        return ret;
-    }
-    ESP_LOGI(TAG, "frame len is %d", ws_pkt.len);
-    if (ws_pkt.len) {
-        /* ws_pkt.len + 1 is for NULL termination as we are expecting a string */
-        buf = calloc(1, ws_pkt.len + 1);
-        if (buf == NULL) {
-            ESP_LOGE(TAG, "Failed to calloc memory for buf");
-            return ESP_ERR_NO_MEM;
-        }
-        ws_pkt.payload = buf;
-        /* Set max_len = ws_pkt.len to get the frame payload */
-        ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "httpd_ws_recv_frame failed with %d", ret);
-            free(buf);
-            return ret;
-        }
-        ESP_LOGI(TAG, "Got packet with message: %s", ws_pkt.payload);
-    }
-    ESP_LOGI(TAG, "Packet type: %d", ws_pkt.type);
-    if (ws_pkt.type == HTTPD_WS_TYPE_TEXT &&
-        strcmp((char*)ws_pkt.payload,"Trigger async") == 0) {
-        free(buf);
-        return trigger_async_send(req->handle, req);
-    }
-
-    ret = httpd_ws_send_frame(req, &ws_pkt);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
-    }
-    free(buf);
-    return ret;
+    return ESP_OK;
 }
 
 static const httpd_uri_t ws = {
@@ -135,18 +69,16 @@ static const httpd_uri_t ws = {
 
 
 esp_err_t httpd_ws_send_frame_to_all_clients(httpd_ws_frame_t *ws_pkt) {
-    static const size_t max_clients = CONFIG_LWIP_MAX_LISTENING_TCP;
-    size_t fds = max_clients;
-    int client_fds[CONFIG_LWIP_MAX_LISTENING_TCP] = {0};
+    size_t fds = HTTPD_WS_MAX_OPEN_SOCKETS;
+    int client_fds[HTTPD_WS_MAX_OPEN_SOCKETS] = {0};
 
     BSP_SOFTCHECK(httpd_get_client_list(m_server, &fds, client_fds));
 
-//    ESP_LOGI(TAG, "Connected clients: %d", fds);
-
     for (int i = 0; i < fds; i++) {
         httpd_ws_client_info_t client_info = httpd_ws_get_fd_info(m_server, client_fds[i]);
+        ESP_LOGI(TAG, "Client type=%d fd=%d", client_info, client_fds[i]);
         if (client_info == HTTPD_WS_CLIENT_WEBSOCKET) {
-            ESP_LOGI(TAG, "Sending to fd=%d", client_fds[i]);
+            ESP_LOGI(TAG, "Sending to ws client fd=%d", client_fds[i]);
             BSP_SOFTCHECK(httpd_ws_send_frame_async(m_server, client_fds[i], ws_pkt));
         }
     }
@@ -173,9 +105,25 @@ static void timer_cb(void*) {
 }
 
 
+static esp_err_t ws_open_fn(httpd_handle_t hd, int sockfd)
+{
+    ESP_LOGI(TAG, "Handle hd=%p: opening websocket fd=%d", hd, sockfd);
+    return ESP_OK;
+}
+
+
+static void ws_close_fn(httpd_handle_t hd, int sockfd)
+{
+    ESP_LOGI(TAG, "Handle hd=%p: closing websocket fd=%d", hd, sockfd);
+}
+
+
 static httpd_handle_t start_webserver(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.max_open_sockets = HTTPD_WS_MAX_OPEN_SOCKETS;
+    config.open_fn = ws_open_fn;
+    config.close_fn = ws_close_fn;
 
     // Start the httpd server
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
