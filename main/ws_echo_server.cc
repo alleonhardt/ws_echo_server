@@ -132,7 +132,7 @@ Send info to ESP32
   var Socket;
   document.getElementById('BTN_SEND_BACK').addEventListener('click', button_send_back);
   function init() {
-    Socket = new WebSocket('ws://' + window.location.hostname + ':81/');
+    Socket = new WebSocket('ws://' + window.location.hostname + ':81/ws');
     console.log("opened " + Socket);
     Socket.onmessage = function(event) {
       processCommand(event);
