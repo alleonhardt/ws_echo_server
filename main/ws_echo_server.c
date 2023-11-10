@@ -76,7 +76,7 @@ static esp_err_t echo_handler(httpd_req_t *req)
 }
 
 static const httpd_uri_t ws = {
-        .uri        = "/",
+        .uri        = "/ws",
         .method     = HTTP_GET,
         .handler    = echo_handler,
         .user_ctx   = NULL,
