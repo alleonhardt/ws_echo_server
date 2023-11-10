@@ -104,6 +104,9 @@ static httpd_handle_t start_webserver(void)
     config.max_open_sockets = HTTPD_WS_MAX_OPEN_SOCKETS;
     config.open_fn = ws_open_fn;
     config.close_fn = ws_close_fn;
+		config.server_port = 81;
+		config.ctrl_port = 32767;
+
 
     // Start the httpd server
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
