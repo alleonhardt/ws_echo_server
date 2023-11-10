@@ -17,7 +17,6 @@
 #include "esp_netif.h"
 #include "protocol_examples_common.h"
 #include "cJSON.h"
-#include "bsp.h"
 
 #include <esp_http_server.h>
 
@@ -49,14 +48,31 @@ struct async_resp_arg {
  */
 static esp_err_t echo_handler(httpd_req_t *req)
 {
-    if (req->method == HTTP_GET) {
-        ESP_LOGI(TAG, "Handshake done, the new connection was opened");
-        httpd_resp_set_type(req, "text/html");
-        const uint32_t root_len = root_end - root_start;
-        httpd_resp_send(req, root_start, root_len);
+		if (req->method == HTTP_GET) {
+        ESP_LOGE(TAG, "Handshake done, the new connection was opened");
         return ESP_OK;
     }
-    return ESP_OK;
+    httpd_ws_frame_t ws_pkt;
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+
+		uint8_t buf[128] = { 0 };
+		ws_pkt.payload = buf;
+		ws_pkt.type = HTTPD_WS_TYPE_BINARY;
+    /* Set max_len = 0 to get the frame len */
+    esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 128);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ws_recv_frame failed to get frame len with %d", ret);
+        return ret;
+    }
+    ESP_LOGE(TAG, "frame len is %d", ws_pkt.len);
+    ESP_LOGE(TAG, "Packet type: %d", ws_pkt.type);
+
+    ret = httpd_ws_send_frame(req, &ws_pkt);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+    }
+    return ret;	
+
 }
 
 static const httpd_uri_t ws = {
@@ -67,42 +83,6 @@ static const httpd_uri_t ws = {
         .is_websocket = true
 };
 
-
-esp_err_t httpd_ws_send_frame_to_all_clients(httpd_ws_frame_t *ws_pkt) {
-    size_t fds = HTTPD_WS_MAX_OPEN_SOCKETS;
-    int client_fds[HTTPD_WS_MAX_OPEN_SOCKETS] = {0};
-
-    BSP_SOFTCHECK(httpd_get_client_list(m_server, &fds, client_fds));
-
-    for (int i = 0; i < fds; i++) {
-        httpd_ws_client_info_t client_info = httpd_ws_get_fd_info(m_server, client_fds[i]);
-        ESP_LOGI(TAG, "Client type=%d fd=%d", client_info, client_fds[i]);
-        if (client_info == HTTPD_WS_CLIENT_WEBSOCKET) {
-            ESP_LOGI(TAG, "Sending to ws client fd=%d", client_fds[i]);
-            BSP_SOFTCHECK(httpd_ws_send_frame_async(m_server, client_fds[i], ws_pkt));
-        }
-    }
-
-    return ESP_OK;
-}
-
-
-static void timer_cb(void*) {
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "rand1", rand());
-    cJSON_AddNumberToObject(root, "rand2", rand());
-    char *my_json_string = cJSON_Print(root);
-    cJSON_Delete(root);
-
-    httpd_ws_frame_t ws_pkt;
-    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-    ws_pkt.payload = (uint8_t*) my_json_string;
-    ws_pkt.len = strlen(my_json_string);
-    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-    httpd_ws_send_frame_to_all_clients(&ws_pkt);
-
-    cJSON_free(my_json_string);
-}
 
 
 static esp_err_t ws_open_fn(httpd_handle_t hd, int sockfd)
@@ -132,8 +112,6 @@ static httpd_handle_t start_webserver(void)
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(m_server, &ws);
         ESP_LOGI(TAG, "Websocket server started");
-        esp_timer_handle_t timer;
-        bsp_start_periodic_timer(&timer, "httpd-my", timer_cb, NULL, 1);
         return m_server;
     }
     ESP_LOGI(TAG, "Error starting server!");

@@ -3,8 +3,6 @@
 cmake_minimum_required(VERSION 3.16)
 
 list(APPEND EXTRA_COMPONENT_DIRS
-           "/home/dizcza/Projects/Embedded/eclipse-workspace/esp32-sdpsensor/components_esp32"
-           "/home/dizcza/Projects/Embedded/eclipse-workspace/esp32-sdpsensor/esp-idf-lib/components"
            "$ENV{IDF_PATH}/examples/common_components"
            )
 
