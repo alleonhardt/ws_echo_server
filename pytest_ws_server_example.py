@@ -73,6 +73,7 @@ def test_examples_protocol_http_ws_echo_server(dut: Dut) -> None:
         DATA = 'Espressif'
         for expected_opcode in [OPCODE_TEXT, OPCODE_BIN, OPCODE_PING]:
             ws.write(data=DATA, opcode=expected_opcode)
+            ws.write(data=DATA, opcode=expected_opcode)
             opcode, data = ws.read()
             logging.info('Testing opcode {}: Received opcode:{}, data:{}'.format(expected_opcode, opcode, data))
             data = data.decode()
