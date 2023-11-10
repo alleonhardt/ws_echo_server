@@ -12,11 +12,12 @@ import pytest
 from pytest_embedded import Dut
 
 try:
-    import websocket
+    from websocket import create_connection
 except ImportError:
     print("Please install 'websocket' by running 'python -m pip install websocket-client'")
     raise
 
+logging.basicConfig(level=logging.INFO)
 OPCODE_TEXT = 0x1
 OPCODE_BIN = 0x2
 OPCODE_PING = 0x9
@@ -27,10 +28,9 @@ class WsClient:
     def __init__(self, ip: str, port: int) -> None:
         self.port = port
         self.ip = ip
-        self.ws = websocket.WebSocket()
 
     def __enter__(self):    # type: ignore
-        self.ws.connect('ws://{}:{}/ws'.format(self.ip, self.port))
+        self.ws = create_connection('ws://{}:{}/ws'.format(self.ip, self.port))
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):     # type: ignore
