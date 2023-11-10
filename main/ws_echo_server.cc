@@ -75,6 +75,102 @@ static esp_err_t echo_handler(httpd_req_t *req)
 
 }
 
+
+  class HTTPMessage
+  {
+    public:
+      HTTPMessage(httpd_req_t *req) : req_(req) {}
+
+			void SetHeader(const char *key, const char *value) {
+				httpd_resp_set_hdr(req_,key,value);
+			}
+
+      void SendResponse(uint16_t code, const char *val, const char *content_type=nullptr)
+      {
+        if(content_type)
+          httpd_resp_set_type(req_,content_type);
+        else 
+          httpd_resp_set_type(req_,"text/plain");
+
+        if(code != 200)
+          httpd_resp_set_status(req_,HTTPD_404);
+        else
+          httpd_resp_set_status(req_,HTTPD_200);
+
+        httpd_resp_send(req_,val,HTTPD_RESP_USE_STRLEN);
+      }
+    private:
+      httpd_req_t* req_;
+  };
+
+
+
+
+static esp_err_t root_handler(httpd_req_t *req)
+{
+	HTTPMessage msg(req);
+	msg.SendResponse(200,R"HTML0(<!DOCTYPE html>
+<html>
+<head>
+<title>Page Title</title>
+</head>
+<body style='background-color: #EEEEEE;'>
+
+<span style='color: #003366;'>
+
+<h1>Lets generate a random number</h1>
+<p>The first random number is: <span id='rand1'>-</span></p>
+<p>The second random number is: <span id='rand2'>-</span></p>
+<p><button type='button' id='BTN_SEND_BACK'>
+Send info to ESP32
+</button></p>
+
+</span>
+
+</body>
+<script>
+  var Socket;
+  document.getElementById('BTN_SEND_BACK').addEventListener('click', button_send_back);
+  function init() {
+    Socket = new WebSocket('ws://' + window.location.hostname + ':81/');
+    console.log("opened " + Socket);
+    Socket.onmessage = function(event) {
+      processCommand(event);
+    };
+  }
+  function button_send_back() {
+    var msg = {
+    brand: 'Gibson',
+    type: 'Les Paul Studio',
+    year:  2010,
+    color: 'white'
+    };
+    Socket.send(JSON.stringify(msg));
+  }
+  function processCommand(event) {
+    var obj = JSON.parse(event.data);
+    document.getElementById('rand1').innerHTML = obj.rand1;
+    document.getElementById('rand2').innerHTML = obj.rand2;
+    console.log(obj.rand1);
+    console.log(obj.rand2);
+  }
+  window.onload = function(event) {
+    init();
+  }
+</script>
+</html>)HTML0","text/html");
+	return ESP_OK;
+}
+
+
+static const httpd_uri_t root = {
+        .uri        = "/",
+        .method     = HTTP_GET,
+        .handler    = root_handler,
+        .user_ctx   = NULL,
+};
+
+
 static const httpd_uri_t ws = {
         .uri        = "/ws",
         .method     = HTTP_GET,
@@ -114,6 +210,7 @@ static httpd_handle_t start_webserver(void)
         // Registering the ws handler
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(m_server, &ws);
+        httpd_register_uri_handler(m_server, &root);
         ESP_LOGI(TAG, "Websocket server started");
         return m_server;
     }
@@ -151,7 +248,7 @@ static void connect_handler(void* arg, esp_event_base_t event_base,
 }
 
 
-void app_main(void)
+extern "C" void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
