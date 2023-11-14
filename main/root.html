@@ -8,43 +8,71 @@
 <span style='color: #003366;'>
 
 <h1>Lets generate a random number</h1>
-<p>The first random number is: <span id='rand1'>-</span></p>
-<p>The second random number is: <span id='rand2'>-</span></p>
-<p><button type='button' id='BTN_SEND_BACK'>
-Send info to ESP32
-</button></p>
+<p><label>Auto send init-request?</label>
+  <input type="checkbox" id="INP_AUTOINIT" checked></input</p>
+<p><button type='button' id='BTN_INIT'>
+  Init connection to ESP32</button>
+  <button type='button' id='BTN_SEND_INIT_REQ' style="display: none">
+    Send Init-Request to ESP32</button>
+</p>
 
 </span>
 
 </body>
 <script>
+  // Example controller details
+  const display_name = "test";
+  const type = 5054;
+  const mac_address = "5-3-5-4";
+
   var Socket;
-  document.getElementById('BTN_SEND_BACK').addEventListener('click', button_send_back);
-  function init() {
-    Socket = new WebSocket('ws://' + window.location.hostname + ':80/');
+  document.getElementById('BTN_INIT').addEventListener('click', button_init);
+  document.getElementById('BTN_SEND_INIT_REQ').addEventListener('click', button_send_init_req);
+  document.getElementById('INP_AUTOINIT').addEventListener('change', toggle_auto_send);
+
+  function button_init() {
+    Socket = new WebSocket("wss://devcon.growcontrol.de:4191/");
     console.log("opened " + Socket);
     Socket.onmessage = function(event) {
-      processCommand(event);
+      console.log("got message: ", event.data)
     };
+    Socket.onclose = function(event) {
+      console.log("closed");
+    }
+    if (document.getElementById("INP_AUTOINIT").checked)
+      Socket.onopen(button_send_init_req());
   }
-  function button_send_back() {
-    var msg = {
-    brand: 'Gibson',
-    type: 'Les Paul Studio',
-    year:  2010,
-    color: 'white'
+  function button_send_init_req() {
+    var req = { 
+      command: 'mock_initialize', 
+      cookie: document.cookie, 
+      internal_id: display_name.toLowerCase().replace(' ', '_'),
+      data: {}
     };
-    Socket.send(JSON.stringify(msg));
+    req.data['display_name'] = display_name;
+    req.data['type'] = type;
+    req.data['mac_address'] = mac_address;
+    req.data['version'] = '#latest';
+    
+    const json_str = JSON.stringify(req);
+    // SEND AS JSON: 
+    //Socket.send();
+    // SEND AS BINARY
+    const binary_str = toBinary(json_str);
+    // Convert to unit8 array
+    let binaryData = new Uint8Array(
+      atob(binary_str)
+        .split('')
+        .map(function (c) {
+          return c.charCodeAt(0);
+        })
+    );
+    // Finally send data
+    socket.send(binaryData);
   }
-  function processCommand(event) {
-    var obj = JSON.parse(event.data);
-    document.getElementById('rand1').innerHTML = obj.rand1;
-    document.getElementById('rand2').innerHTML = obj.rand2;
-    console.log(obj.rand1);
-    console.log(obj.rand2);
-  }
-  window.onload = function(event) {
-    init();
+  function toggle_auto_send() {
+    var btn = document.getElementById("BTN_SEND_INIT_REQ")
+    btn.style.display = (btn.style.display === "none") ? "block" : "none";
   }
 </script>
 </html>
