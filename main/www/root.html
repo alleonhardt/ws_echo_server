@@ -1,78 +1,100 @@
 <!DOCTYPE html>
 <html>
-<head>
-<title>Page Title</title>
-</head>
-<body style='background-color: #EEEEEE;'>
+  <head>
+    <title>Page Title</title>
+    <!-- 
+      <script src="glue.js"></script> 
+    -->
+  </head>
 
-<span style='color: #003366;'>
+  <body style='background-color: #EEEEEE;'>
+    <span style='color: #003366;'>
+      <h1>Lets generate a random number</h1>
+      <p>
+        <label 
+          title="If `checked` will send initialization request when socket opens (e.a. `Socket.onopen()`"
+        >
+          Auto send init-request on connection open?
+        </label>
+        <input type="checkbox" id="INP_AUTOINIT" checked></input>
+      </p>
+      <p>
+        <button type='button' id='BTN_INIT'>
+          Init connection to ESP32
+        </button>
+        <button type='button' id='BTN_SEND_INIT_REQ' style="display: none">
+          Send Init-Request to ESP32
+        </button>
+      </p>
+      <p id="resp_msg"></p>
+    </span>
+  </body>
 
-<h1>Lets generate a random number</h1>
-<p><label>Auto send init-request?</label>
-  <input type="checkbox" id="INP_AUTOINIT" checked></input</p>
-<p><button type='button' id='BTN_INIT'>
-  Init connection to ESP32</button>
-  <button type='button' id='BTN_SEND_INIT_REQ' style="display: none">
-    Send Init-Request to ESP32</button>
-</p>
+  <script>
+    let Socket;
+    document.getElementById('BTN_INIT').addEventListener('click', button_init);
+    document.getElementById('BTN_SEND_INIT_REQ').addEventListener('click', button_send_init_req);
+    document.getElementById('INP_AUTOINIT').addEventListener('change', toggle_auto_send);
 
-</span>
+    function button_init() {
+      Socket = new WebSocket("wss://devcon.growcontrol.de:4191/");
+      console.log("connecting to socket..." + Socket);
 
-</body>
-<script>
-  // Example controller details
-  const display_name = "test";
-  const type = 5054;
-  const mac_address = "5-3-5-4";
-
-  var Socket;
-  document.getElementById('BTN_INIT').addEventListener('click', button_init);
-  document.getElementById('BTN_SEND_INIT_REQ').addEventListener('click', button_send_init_req);
-  document.getElementById('INP_AUTOINIT').addEventListener('change', toggle_auto_send);
-
-  function button_init() {
-    Socket = new WebSocket("wss://devcon.growcontrol.de:4191/");
-    console.log("opened " + Socket);
-    Socket.onmessage = function(event) {
-      console.log("got message: ", event.data)
-    };
-    Socket.onclose = function(event) {
-      console.log("closed");
+      Socket.onmessage = function(event) {
+        console.log("got message: ", event.data)
+        document.getElementById("resp_msg").innerHTML = "Message: `" + event.data + "`";
+      };
+      Socket.onclose = function(event) {
+        console.log("closed");
+      }
+      if (document.getElementById("INP_AUTOINIT").checked) {
+        Socket.onopen = function(event) { button_send_init_req(); }
+      } else {
+        Socket.onopen = function(event) { console.log("opened " + Socket); }
+      }
     }
-    if (document.getElementById("INP_AUTOINIT").checked)
-      Socket.onopen(button_send_init_req());
-  }
-  function button_send_init_req() {
-    var req = { 
-      command: 'mock_initialize', 
-      cookie: document.cookie, 
-      internal_id: display_name.toLowerCase().replace(' ', '_'),
-      data: {}
-    };
-    req.data['display_name'] = display_name;
-    req.data['type'] = type;
-    req.data['mac_address'] = mac_address;
-    req.data['version'] = '#latest';
-    
-    const json_str = JSON.stringify(req);
-    // SEND AS JSON: 
-    //Socket.send();
-    // SEND AS BINARY
-    const binary_str = toBinary(json_str);
-    // Convert to unit8 array
-    let binaryData = new Uint8Array(
-      atob(binary_str)
-        .split('')
-        .map(function (c) {
-          return c.charCodeAt(0);
-        })
-    );
-    // Finally send data
-    socket.send(binaryData);
-  }
-  function toggle_auto_send() {
-    var btn = document.getElementById("BTN_SEND_INIT_REQ")
-    btn.style.display = (btn.style.display === "none") ? "block" : "none";
-  }
-</script>
+
+    function button_send_init_req() {
+      // HERE IS HOW THE BINARY DATA CAN BE CREATED (adding `glue.js` script necessary
+      // Example controller details
+      // const display_name = "test";
+      // const type = 5054;
+      // const mac_address = "5-3-5-4";
+      // var req = { 
+      //   command: 'mock_initialize', 
+      //   cookie: document.cookie, 
+      //   internal_id: display_name.toLowerCase().replace(' ', '_'),
+      //   data: {}
+      // };
+      // req.data['display_name'] = display_name;
+      // req.data['type'] = type;
+      // req.data['mac_address'] = mac_address;
+      // req.data['version'] = '#latest';
+      // 
+      // const json_str = JSON.stringify(req);
+      // console.log(json_str);
+      // const binary_str = Module.ccall("StringToMsgpack", "string", ["string"], [json_str]);
+      // console.log("Got binary string: ", binary_str);
+      const binary_str = "r21vY2tfaW5pdGlhbGl6ZaR0ZXN0oKR0ZXN0zRO+pzUtMy01LTSnI2xhdGVzdA=="
+      // Convert to unit8 array
+      let binaryData = new Uint8Array(
+        atob(binary_str)
+          .split('')
+          .map(function (c) {
+            return c.charCodeAt(0);
+          })
+      );
+      console.log("Sending binary: ", binaryData);
+      // Finally send data
+      setTimeout(function() {
+        Socket.send(binaryData);
+      }, 500);
+    }
+
+    function toggle_auto_send() {
+      var btn = document.getElementById("BTN_SEND_INIT_REQ")
+      btn.style.display = (btn.style.display === "none") ? "block" : "none";
+    }
+  </script>
+
 </html>
